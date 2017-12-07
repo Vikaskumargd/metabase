@@ -318,8 +318,8 @@
        first
        thunk->boolean)))
 
-(defn- produces-bytes? [{:keys [attachment-bytes-thunk]}]
-  (< 0 (alength (attachment-bytes-thunk))))
+(defn- attachment-byte-count [{:keys [attachment-bytes-thunk]}]
+  (alength (attachment-bytes-thunk)))
 
 ;; Basic slack test, 2 cards, 1 recipient channel
 (tt/expect-with-temp [Card         [{card-id-1 :id} (checkins-query {:breakout [["datetime-field" (data/id :checkins :date) "hour"]]})]
@@ -352,11 +352,13 @@
       :attachment-name "image.png",
       :channel-id "FOO",
       :fallback "Test card 2"}]}
+   true
    true]
   (slack-test-setup
    (let [[slack-data] (send-pulse! (retrieve-pulse pulse-id))]
      [(thunk->boolean slack-data)
-      (every? produces-bytes? (:attachments slack-data))])))
+      (< 10000 (-> slack-data :attachments first attachment-byte-count))
+      (< 9000 (-> slack-data :attachments second attachment-byte-count))])))
 
 (defn- email-body? [{message-type :type content :content}]
   (and (= "text/html; charset=utf-8" message-type)
@@ -389,7 +391,7 @@
                     :title_link (str "https://metabase.com/testmb/question/" card-id),
                     :attachment-name "image.png", :channel-id "FOO",
                     :fallback "Test card"}]}
-   true
+   [true]
    {:subject "Pulse: Pulse Name",
     :recipients ["rasta@metabase.com"],
     :message-type :attachments}
@@ -401,7 +403,7 @@
          slack-data (m/find-first #(contains? % :channel-id) pulse-data)
          email-data (m/find-first #(contains? % :subject) pulse-data)]
      [(thunk->boolean slack-data)
-      (every? produces-bytes? (:attachments slack-data))
+      (map #(< 10000 (attachment-byte-count %)) (:attachments slack-data))
       (select-keys email-data [:subject :recipients :message-type])
       (count (:message email-data))
       (email-body? (first (:message email-data)))
@@ -423,11 +425,11 @@
                    :title_link (str "https://metabase.com/testmb/question/" card-id)
                    :attachment-name "image.png", :channel-id "FOO",
                    :fallback "Test card"}]}
-   true]
+   [true]]
   (slack-test-setup
    (let [[result] (send-pulse! (retrieve-pulse-or-alert pulse-id))]
      [(thunk->boolean result)
-      (every? produces-bytes? (:attachments result))])))
+      (map #(< 10000 (attachment-byte-count %)) (:attachments result))])))
 
 (defn- venues-query [aggregation-op]
   {:name          "Test card"
